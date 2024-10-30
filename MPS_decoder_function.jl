@@ -88,7 +88,6 @@ function MPS_decoder(mode::String, d::Int, code_type::String, permuted::Bool, ex
         p /= 3.
     end
     
-    #println(occured_error)
 
     # Determine weight of the error
 
@@ -101,7 +100,7 @@ function MPS_decoder(mode::String, d::Int, code_type::String, permuted::Bool, ex
 
     Logical_probabilities = Array{Float64}(undef, 2, 2)
 
-    #PS = find_Pauli_give_syndrome(stabilizers, s_meas, n_qubits)
+    # Define a representative Pauli operator, so a Pauli error that causes syndrome s, can be efficiently determined with a list of destabilizers
     PS = zeros(Int, 2*n_qubits)
 
     for i in 1:n_stabs
@@ -110,16 +109,9 @@ function MPS_decoder(mode::String, d::Int, code_type::String, permuted::Bool, ex
         end
     end
 
-    #=
-    P_S = Vector{Int}(undef, 2*n_qubits)
-    for i in 1:n_qubits
-        P_S[2*i-1] = PS[i]
-        P_S[2*i] = PS[i+n_qubits]
-    end
-    =#
-
     error_matrix = [Array{Float64}(undef, 4) for i in 1:n_qubits]
 
+    # Fill in Tensors to fix open edges given a measured syndrome
     for i in 1:n_qubits
         for j in 1:4
             if (PS[i] + 2 * PS[i + n_qubits]) == j - 1
@@ -143,27 +135,17 @@ function MPS_decoder(mode::String, d::Int, code_type::String, permuted::Bool, ex
             end
         end
     end
-    #println(error_matrix)
 
     Test_error_tensors = [ITensor(error_matrix[i], error_inputs[i]) for i in 1:(n_qubits)]
 
-
-
-
-
-    #println("Physical Error")
-    #println(occured_error)
-
-    #println("Detected syndrome")
-    #println(s_meas)
-
+    # Fix open \Tilde{e_j} edges
     for i in 1:length(Logical_probabilities)
         for j in 1:(n_qubits)
             trellis_MPS_logical_classes[i][j] = trellis_MPS_logical_classes[i][j] * Test_error_tensors[j]
         end
     end
 
-    #println("Decoding logical probabilities")
+    # Final contraction process
     for j in 1:length(Logical_probabilities)
         V = ITensor(1.)
         for i in 1:(n_qubits)
@@ -171,8 +153,7 @@ function MPS_decoder(mode::String, d::Int, code_type::String, permuted::Bool, ex
         end
         Logical_probabilities[j] = scalar(V)
     end 
-
-    #println(Logical_probabilities)
+    
     # Hadamard transform of data
     Logical_probabilities = Hadamard_matrix * Logical_probabilities * Hadamard_matrix
 
@@ -183,31 +164,27 @@ function MPS_decoder(mode::String, d::Int, code_type::String, permuted::Bool, ex
 
     logical_class = 0
 
-    #println("Correction operation:")
+    # Test over probability distribution to see if logical I, X, Z, Y
     if index_max == CartesianIndex(1, 1)
         correcting_operation = PS
         logical_class = 1
-        #println(PS)
     end
     if index_max == CartesianIndex(2, 1)
         correcting_operation = (PS .+ logical_operator_x) .% 2 
         logical_class = 2
-        #println((PS .+ logical_operator_x) .% 2 )
     end
     if index_max == CartesianIndex(1, 2)
         correcting_operation = (PS .+ logical_operator_z) .% 2 
         logical_class = 3
-        #println((PS .+ logical_operator_z) .% 2 )
     end
     if index_max == CartesianIndex(2, 2)
         correcting_operation = (PS .+ logical_operator_z .+ logical_operator_x) .% 2 
         logical_class = 4
-        #println((PS .+ logical_operator_x .+ logical_operator_z) .% 2 )
     end
     return correcting_operation, p, logical_class, Logical_probabilities
 end
 
-
+# Function built for testing purposes to contract the TN from right to left instead of left to right
 function MPS_decoder_opposite_contraction(mode::String, d::Int, code_type::String, permuted::Bool, exact_decoding::Bool, s_meas)
 
     @assert d % 2 == true 
@@ -291,13 +268,7 @@ function MPS_decoder_opposite_contraction(mode::String, d::Int, code_type::Strin
     if mode == "Full"
         p /= 3.
     end
-    
-    #println(occured_error)
 
-    # Determine weight of the error
-
-
-    #s_meas = check_orthogonality(stabilizers, occured_error)
 
     Hadamard_matrix = Array{Float64}(undef, 2, 2)
     Hadamard_matrix[1,1], Hadamard_matrix[1,2] = 1, 1
@@ -314,13 +285,6 @@ function MPS_decoder_opposite_contraction(mode::String, d::Int, code_type::Strin
         end
     end
 
-    #=
-    P_S = Vector{Int}(undef, 2*n_qubits)
-    for i in 1:n_qubits
-        P_S[2*i-1] = PS[i]
-        P_S[2*i] = PS[i+n_qubits]
-    end
-    =#
 
     error_matrix = [Array{Float64}(undef, 4) for i in 1:n_qubits]
 
@@ -347,27 +311,17 @@ function MPS_decoder_opposite_contraction(mode::String, d::Int, code_type::Strin
             end
         end
     end
-    #println(error_matrix)
 
     Test_error_tensors = [ITensor(error_matrix[i], error_inputs[i]) for i in 1:(n_qubits)]
 
 
-
-
-
-    #println("Physical Error")
-    #println(occured_error)
-
-    #println("Detected syndrome")
-    #println(s_meas)
 
     for i in 1:length(Logical_probabilities)
         for j in n_qubits:-1:1
             trellis_MPS_logical_classes[i][j] = trellis_MPS_logical_classes[i][j] * Test_error_tensors[j]
         end
     end
-
-    #println("Decoding logical probabilities")
+    
     for j in 1:length(Logical_probabilities)
         V = ITensor(1.)
         for i in n_qubits:-1:1
@@ -376,7 +330,7 @@ function MPS_decoder_opposite_contraction(mode::String, d::Int, code_type::Strin
         Logical_probabilities[j] = scalar(V)
     end 
 
-    #println(Logical_probabilities)
+
     # Hadamard transform of data
     Logical_probabilities = Hadamard_matrix * Logical_probabilities * Hadamard_matrix
 
@@ -387,26 +341,21 @@ function MPS_decoder_opposite_contraction(mode::String, d::Int, code_type::Strin
 
     logical_class = 0
 
-    #println("Correction operation:")
     if index_max == CartesianIndex(1, 1)
         correcting_operation = PS
         logical_class = 1
-        #println(PS)
     end
     if index_max == CartesianIndex(2, 1)
         correcting_operation = (PS .+ logical_operator_x) .% 2 
         logical_class = 2
-        #println((PS .+ logical_operator_x) .% 2 )
     end
     if index_max == CartesianIndex(1, 2)
         correcting_operation = (PS .+ logical_operator_z) .% 2 
         logical_class = 3
-        #println((PS .+ logical_operator_z) .% 2 )
     end
     if index_max == CartesianIndex(2, 2)
         correcting_operation = (PS .+ logical_operator_z .+ logical_operator_x) .% 2 
         logical_class = 4
-        #println((PS .+ logical_operator_x .+ logical_operator_z) .% 2 )
     end
     return correcting_operation, p, logical_class, Logical_probabilities
 end
