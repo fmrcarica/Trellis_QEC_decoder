@@ -75,6 +75,7 @@ function create_trellis_MPS(mode::String, d::Int, code_type::String, permuted::B
         n_stabs = Int(n_stabs / 2)
     end
 
+    # If working with the X only trellis define a list of Z stabilizers
     if mode == "X"
         stabilizers_z = stabilizers[(n_stabs+1):(2*n_stabs)]
         #global stabilizers = stabilizers[1:n_stabs]
@@ -143,23 +144,10 @@ function create_trellis_MPS(mode::String, d::Int, code_type::String, permuted::B
     end
 
 
-    #occured_error = Pauli_error(p, n_qubits)
-    #occured_error = zeros(Int, 2*n_qubits)
-
-    #s_meas = check_orthogonality(stabilizers, occured_error)
-
 
 
     # for syndrome s = 0 representative Pauli is PS = [0...0]
     PS = zeros(Int, 2*n_qubits)
-
-    #=
-    for i in 1:n_stabs
-        if s_meas[i]
-            global PS = (PS .+ destabilizers[i]) .% 2
-        end
-    end
-    =#
 
 
     f_x = [Index(2, "trellis_p_x$i") for i in 1:n_qubits]
@@ -179,7 +167,6 @@ function create_trellis_MPS(mode::String, d::Int, code_type::String, permuted::B
     intermediate_syndrome_future = 0
 
     # Fill in indicator network from trellis
-    #println("Constructing trellis network")
     for trellis_pos in ProgressBar(1:length(zero_syndrome_trellis))
         
         intermediate_syndrome_past = intermediate_syndrome_future
@@ -195,6 +182,7 @@ function create_trellis_MPS(mode::String, d::Int, code_type::String, permuted::B
                 for k in 1:2
                     for (l, future_syndrome) in enumerate(syndrome_values_future[trellis_pos])
                         #=
+                        # Possible update rule for non-trivial syndrome trellis TN
                         if [past_syndrome, (j-1) ⊻ PS[trellis_pos] , (k-1) ⊻ PS[n_qubits + trellis_pos], future_syndrome] in zero_syndrome_trellis[trellis_pos]
                             f[trellis_pos][i, j, k, l] = 1;
                         else
@@ -261,52 +249,6 @@ function create_trellis_MPS(mode::String, d::Int, code_type::String, permuted::B
 
     Error_check_tensors_x = [ITensor(parity_matrix_3, f_x[i], error_inputs_x[i], x[i]) for i in 1:n_qubits]
     Error_check_tensors_z = [ITensor(parity_matrix_3, f_z[i], error_inputs_z[i], z[i]) for i in 1:n_qubits]
-
-    # Fill in tensors for errors for testing and adjust contraction process
-    #=
-    error_matrix = [Array{Float64}(undef, 2) for i in 1:(2*n_qubits)]
-    for i in 1:(2*n_qubits)
-        if Bool(PS[i])
-            error_matrix[i][1], error_matrix[i][2] = 1, 0
-        else
-            error_matrix[i][1], error_matrix[i][2] = 0, 1
-        end
-    end
-    =#
-    #Test_error_tensors_x = [ITensor(error_matrix[i], error_inputs_x[i]) for i in 1:n_qubits]
-    #Test_error_tensors_z = [ITensor(error_matrix[i+n_qubits], error_inputs_z[i]) for i in 1:n_qubits]
-
-
-    #error_matrix = [Array{Float64}(undef, 4) for i in 1:n_qubits]
-
-    #=
-    for i in 1:n_qubits
-        for j in 1:4
-            if (PS[i] + 2 * PS[i + n_qubits]) == j - 1
-                error_matrix[i][j] = 1
-            else
-                error_matrix[i][j] = 0
-            end
-            
-        end
-    end
-    if mode == "X"
-        for i in 1:n_qubits
-            error_matrix[i][1] = 0
-            error_matrix[i][3] = 0
-            if PS[i+n_qubits]==1
-                error_matrix[i][4] = 1
-                error_matrix[i][2] = 0
-            else
-                error_matrix[i][4] = 0
-                error_matrix[i][2] = 1
-            end
-        end
-    end
-    #println(error_matrix)
-
-    Test_error_tensors = [ITensor(error_matrix[i], error_inputs[i]) for i in 1:(n_qubits)]
-    =#
 
     beginning_node = Array{Int}(undef, 1)
     beginning_node[1] = 1 
@@ -423,7 +365,7 @@ function create_trellis_MPS(mode::String, d::Int, code_type::String, permuted::B
     trellis_mps = nothing
 
 
-    #println("Constructing Logical Decoder as MPS network")
+    # Contracting network into MPS form
     for i in 1:4
 
         trellis_mps = nothing
@@ -431,7 +373,6 @@ function create_trellis_MPS(mode::String, d::Int, code_type::String, permuted::B
         f_contracted = f0
         log_counter_x = 0
         log_counter_z = 0
-        #println(f_contracted)
         for j in ProgressBar(1:n_qubits)
             # Update logical counters
             if logical_operator_x[j] == 1
@@ -458,39 +399,7 @@ function create_trellis_MPS(mode::String, d::Int, code_type::String, permuted::B
                 logical_z[log_counter_z][2], logical_z[log_counter_z][1] = 1, 0
             end
             
-            #=
-            logical_x[j][1] = (logical_x[j][1] + PS[j]) % 2
-            logical_x[j][2] = (logical_x[j][2] + PS[j]) % 2
-            logical_z[j][1] = (logical_z[j][1] + PS[j + n_qubits]) % 2
-            logical_z[j][2] = (logical_z[j][2] + PS[j + n_qubits]) % 2
-            =#
-            #=
-            if logical_operator_x[j] == 1
-                global f_contracted = f_contracted*f_tensor[j]*Error_check_tensors_x[j]*Error_check_tensors_z[j]*qubit_x[j]* qubit_z[j]* P[j] * Hadamard_tensors_x[log_counter_x] * logical_x[log_counter_x]
-            else
-                global f_contracted = f_contracted*f_tensor[j]*qubit_x[j]* qubit_z[j]* P[j]
-            end
-
-            if logical_operator_z[j + n_qubits] == 1
-                global f_contracted = f_contracted *  Hadamard_tensors_z[log_counter_z] * logical_z[log_counter_z]
-            end
-            =#
-            
-            #local_MPS_copy = trellis_mps
             f_contracted = nothing
-            #=
-            if j == 1
-                f_contracted = f0
-            else
-                #=
-                f_contracted = trellis_mps[1]
-                for k in 2:length(trellis_mps)
-                    f_contracted = f_contracted * trellis_mps[k]
-                end
-                =#
-                f_contracted = last(trellis_mps)
-            end
-            =#
 
             if logical_operator_x[j] == 1
                 f_contracted = f_tensor[j]*Error_check_tensors_x[j]*Error_check_tensors_z[j]*error_translation_tensor[j]*qubit_x[j]* qubit_z[j]* P[j] * Hadamard_tensors_x[log_counter_x] * logical_x[log_counter_x]
@@ -501,15 +410,6 @@ function create_trellis_MPS(mode::String, d::Int, code_type::String, permuted::B
             if logical_operator_z[j + n_qubits] == 1
                 f_contracted = f_contracted *  Hadamard_tensors_z[log_counter_z] * logical_z[log_counter_z]
             end
-            #f_contracted = f_contracted*Test_error_tensors[j]
-            #=
-            if j != 1
-                len = length(trellis_mps)
-                for k in 1:(len - 1)
-                    f_contracted = trellis_mps[len - k] * f_contracted
-                end
-            end
-            =#
 
             # Contract first and last edges s0 and sn into TN
             if j == n_qubits
@@ -581,22 +481,12 @@ function create_trellis_MPS(mode::String, d::Int, code_type::String, permuted::B
                 #global trellis_mps = MPS(f_contracted, vcat(error_inputs[j], s[j+1]); cutoff=local_cutoff_svd, maxdim = local_truncate_dim)
             end
 
-            #println(trellis_mps)
-
-            #println(trellis_mps)
-            #=
-            if j == n_qubits
-                global trellis_mps = MPS(f_contracted, vcat(error_inputs[1:2*j]); cutoff=5e-4, maxdim = 50)
-            end
-            =#
             f_contracted = nothing
-                #println(f_contracted)
-            #Logical_probabilities[i] = f_contracted[1]
         end
-        #global f_contracted = f_contracted * flast
-        #Logical_probabilities[i] = f_contracted[1]
 
-        #truncate!(trellis_mps; cutoff = cutoff_svd, maxdim = truncate_dim)
+        if !(exact_decoding)
+            truncate!(trellis_mps; cutoff = cutoff_svd, maxdim = truncate_dim)
+        end
         push!(trellis_MPS_logical_classes, trellis_mps)
 
     end
@@ -620,9 +510,7 @@ function create_trellis_MPS(mode::String, d::Int, code_type::String, permuted::B
 
     if !isdir(directory_name_dim)
         mkdir(directory_name_dim)
-        #println("Directory created: $directory_name_dim")
     else
-        #println("Directory already exists: $directory_name_dim")
     end
 
     # Delete the file
